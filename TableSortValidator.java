@@ -51,9 +51,9 @@ public class TableSortValidator {
         }
     }
 
-    // Example usage for a table with multiple columns
-    public void validateAllColumns(String tableLocator, Map<String, Integer> columnHeaderMap) {
-        for (Map.Entry<String, Integer> entry : columnHeaderMap.entrySet()) {
+    // Method to validate only parameterized columns
+    public void validateSpecificColumns(String tableLocator, List<Map.Entry<String, Integer>> columnsToValidate) {
+        for (Map.Entry<String, Integer> entry : columnsToValidate) {
             String headerLocator = entry.getKey();
             int columnIndex = entry.getValue();
 
@@ -83,14 +83,13 @@ public class TableSortValidator {
         // Table locator
         String tableLocator = "table"; // Adjust this to match your table locator
 
-        // Column headers locators and indices (Adjust locators to match your headers)
-        Map<String, Integer> columnHeaderMap = new HashMap<>();
-        columnHeaderMap.put("th:nth-child(1)", 1); // Header locator and column index
-        columnHeaderMap.put("th:nth-child(2)", 2);
-        columnHeaderMap.put("th:nth-child(3)", 3);
+        // List of columns to validate (header locator and column index)
+        List<Map.Entry<String, Integer>> columnsToValidate = new ArrayList<>();
+        columnsToValidate.add(new AbstractMap.SimpleEntry<>("th:nth-child(1)", 1)); // Header locator and column index
+        columnsToValidate.add(new AbstractMap.SimpleEntry<>("th:nth-child(3)", 3));
 
-        // Validate sorting for all columns
-        validator.validateAllColumns(tableLocator, columnHeaderMap);
+        // Validate sorting for the specified columns
+        validator.validateSpecificColumns(tableLocator, columnsToValidate);
 
         // Close the driver
         driver.quit();
