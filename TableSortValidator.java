@@ -1,112 +1,105 @@
-import org.openqa.selenium.*;
-import org.openqa.selenium.support.ui.*;
-import java.util.*;
-import java.util.stream.Collectors;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class TableSortValidator {
 
-    WebDriver driver;
+    /**
+     * Capture the table data for all rows and columns.
+     *
+     * @param table WebElement representing the table.
+     * @return List of rows, where each row is a List of column values.
+     */
+    public static List<List<String>> captureTableData(WebElement table) {
+        List<List<String>> tableData = new ArrayList<>();
 
-    public TableSortValidator(WebDriver driver) {
-        this.driver = driver;
+        // Find all rows in the table body
+        List<WebElement> rows = table.findElements(By.xpath(".//tbody/tr"));
+        for (WebElement row : rows) {
+            List<String> rowData = new ArrayList<>();
+
+            // Find all columns (cells) in the current row
+            List<WebElement> cells = row.findElements(By.xpath(".//td"));
+            for (WebElement cell : cells) {
+                rowData.add(cell.getText().trim());
+            }
+            tableData.add(rowData);
+        }
+
+        return tableData;
     }
 
-    // Generic method to validate sorting for a column
-    public boolean validateSorting(String tableLocator, String columnHeaderValue, boolean ascending) {
-        try {
-            // Locate the table
-            WebElement table = driver.findElement(By.cssSelector(tableLocator));
+    /**
+     * Validate that sorting a column updates only the intended column and preserves row data integrity.
+     *
+     * @param driver      WebDriver instance.
+     * @param table       WebElement representing the table.
+     * @param header      WebElement representing the column header to sort.
+     * @param columnIndex The index of the column to validate sorting for (0-based).
+     * @return true if sorting is valid, false otherwise.
+     */
+    public static boolean validateColumnSorting(WebDriver driver, WebElement table, WebElement header, int columnIndex) {
+        // Capture table data before sorting
+        List<List<String>> beforeSorting = captureTableData(table);
 
-            // Locate the column header dynamically by its text value
-            WebElement header = table.findElement(By.xpath("//thead/tr/th[normalize-space(text())='" + columnHeaderValue + "']"));
+        // Click the header to sort
+        header.click();
 
-            // Click the header to sort
-            header.click();
+        // Capture table data after sorting
+        List<List<String>> afterSorting = captureTableData(table);
 
-            // Wait for the table to update (add an appropriate wait if necessary)
-            WebDriverWait wait = new WebDriverWait(driver, 10);
-            wait.until(ExpectedConditions.stalenessOf(table));
+        // Extract the column to be sorted (before and after)
+        List<String> beforeColumn = new ArrayList<>();
+        List<String> afterColumn = new ArrayList<>();
+        for (List<String> row : beforeSorting) {
+            beforeColumn.add(row.get(columnIndex));
+        }
+        for (List<String> row : afterSorting) {
+            afterColumn.add(row.get(columnIndex));
+        }
 
-            // Re-fetch the table after sorting
-            table = driver.findElement(By.cssSelector(tableLocator));
-
-            // Locate the column index dynamically based on the header
-            int columnIndex = getColumnIndexByHeaderValue(table, columnHeaderValue);
-
-            // Get all values from the specific column
-            List<WebElement> columnValues = table.findElements(By.xpath("//tbody/tr/td[" + columnIndex + "]"));
-            List<String> actualValues = columnValues.stream()
-                    .map(WebElement::getText)
-                    .collect(Collectors.toList());
-
-            // Create a sorted copy for comparison
-            List<String> sortedValues = new ArrayList<>(actualValues);
-            if (ascending) {
-                sortedValues.sort(String::compareTo);
-            } else {
-                sortedValues.sort(Collections.reverseOrder());
-            }
-
-            // Compare the actual values with the sorted values
-            return actualValues.equals(sortedValues);
-
-        } catch (Exception e) {
-            e.printStackTrace();
+        // Validate the intended column is sorted
+        List<String> sortedColumn = new ArrayList<>(beforeColumn);
+        sortedColumn.sort(String::compareTo); // Ascending order
+        if (!afterColumn.equals(sortedColumn)) {
+            System.out.println("Intended column is not sorted correctly.");
             return false;
         }
-    }
 
-    // Helper method to determine the column index dynamically by header value
-    private int getColumnIndexByHeaderValue(WebElement table, String columnHeaderValue) {
-        List<WebElement> headers = table.findElements(By.xpath("//thead/tr/th"));
-        for (int i = 0; i < headers.size(); i++) {
-            if (headers.get(i).getText().trim().equalsIgnoreCase(columnHeaderValue.trim())) {
-                return i + 1; // XPath column indices start at 1
+        // Validate the rest of the columns maintain their row data integrity
+        for (int i = 0; i < beforeSorting.size(); i++) {
+            for (int j = 0; j < beforeSorting.get(i).size(); j++) {
+                if (j != columnIndex && !beforeSorting.get(i).get(j).equals(afterSorting.get(i).get(j))) {
+                    System.out.println("Row integrity is broken at row " + i + ", column " + j);
+                    return false;
+                }
             }
         }
-        throw new NoSuchElementException("Header with value '" + columnHeaderValue + "' not found in the table");
-    }
 
-    // Method to validate only parameterized columns
-    public void validateSpecificColumns(String tableLocator, List<String> columnHeaderValues) {
-        for (String headerValue : columnHeaderValues) {
-            System.out.println("Validating sorting for column: " + headerValue);
-
-            // Validate ascending
-            if (validateSorting(tableLocator, headerValue, true)) {
-                System.out.println("Ascending sort works for column: " + headerValue);
-            } else {
-                System.out.println("Ascending sort failed for column: " + headerValue);
-            }
-
-            // Validate descending
-            if (validateSorting(tableLocator, headerValue, false)) {
-                System.out.println("Descending sort works for column: " + headerValue);
-            } else {
-                System.out.println("Descending sort failed for column: " + headerValue);
-            }
-        }
+        System.out.println("Sorting is valid, and row data integrity is maintained.");
+        return true;
     }
 
     public static void main(String[] args) {
-        // Example usage
-        WebDriver driver = // Initialize WebDriver here
-        TableSortValidator validator = new TableSortValidator(driver);
+        WebDriver driver = /* Initialize WebDriver here */;
 
-        // Table locator
-        String tableLocator = "table"; // Adjust this to match your table locator
+        // Locate the table and header
+        WebElement table = driver.findElement(By.cssSelector("table"));
+        WebElement header = table.findElement(By.xpath("//thead/tr/th[normalize-space(text())='Status']"));
 
-        // List of column header values to validate
-        List<String> columnHeaderValues = Arrays.asList(
-                "Status",     // Example header values based on your table
-                "Issuer",
-                "Last Updated"
-        );
+        // Validate sorting for the "Status" column (assume columnIndex = 0)
+        boolean isValid = validateColumnSorting(driver, table, header, 0);
 
-        // Validate sorting for the specified columns
-        validator.validateSpecificColumns(tableLocator, columnHeaderValues);
+        if (isValid) {
+            System.out.println("Sorting validation passed!");
+        } else {
+            System.out.println("Sorting validation failed!");
+        }
 
-        // Close the driver
+        // Close the browser
         driver.quit();
     }
 }
