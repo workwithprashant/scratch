@@ -176,3 +176,144 @@ public class XMLComparator {
         }
     }
 }
+
+/**
+ * The `DiffResult` class is responsible for storing and reporting XML differences,
+ * including:
+ * - Element value mismatches
+ * - Missing elements in either XML file
+ * - Missing attributes in either XML file
+ * - Attribute value mismatches
+ *
+ * This class provides structured methods to store mismatches and logs the results.
+ */
+public class DiffResult {
+
+    private static final Logger logger = LogManager.getLogger(DiffResult.class);
+
+    // Stores element value mismatches
+    private final List<String> mismatches = new ArrayList<>();
+
+    // Stores missing elements in either XML file
+    private final List<String> missingElements = new ArrayList<>();
+
+    // Stores missing attributes in either XML file
+    private final List<String> missingAttributes = new ArrayList<>();
+
+    /**
+     * Adds a mismatch when element values differ between the two XML files.
+     *
+     * @param key        The XML element path where the mismatch occurs.
+     * @param shortName1 The name assigned to the first XML file (e.g., "Baseline").
+     * @param value1     The value from the first XML file.
+     * @param shortName2 The name assigned to the second XML file (e.g., "Modified").
+     * @param value2     The value from the second XML file.
+     */
+    public void addMismatch(String key, String shortName1, String value1, String shortName2, String value2) {
+        String message = "Mismatch at " + key + ": " + shortName1 + "=[" + value1 + "] " + shortName2 + "=[" + value2 + "]";
+        mismatches.add(message);
+    }
+
+    /**
+     * Adds a missing element entry when an XML element is found in one file but not the other.
+     *
+     * @param shortName The name assigned to the XML file where the element is missing.
+     * @param key       The XML element path that is missing.
+     */
+    public void addMissingElement(String shortName, String key) {
+        String message = "Missing element in " + shortName + ": " + key;
+        missingElements.add(message);
+    }
+
+    /**
+     * Adds a missing attribute entry when an attribute is found in one XML file but not the other.
+     *
+     * @param shortName The name assigned to the XML file where the attribute is missing.
+     * @param key       The XML element path where the attribute is missing.
+     * @param attribute The attribute name that is missing.
+     */
+    public void addMissingAttribute(String shortName, String key, String attribute) {
+        String message = "Missing attribute '" + attribute + "' in " + shortName + " at element: " + key;
+        missingAttributes.add(message);
+    }
+
+    /**
+     * Adds an attribute mismatch entry when attribute values differ between the two XML files.
+     *
+     * @param key        The XML element path where the attribute mismatch occurs.
+     * @param attribute  The name of the attribute that differs.
+     * @param shortName1 The name assigned to the first XML file.
+     * @param value1     The attribute value from the first XML file.
+     * @param shortName2 The name assigned to the second XML file.
+     * @param value2     The attribute value from the second XML file.
+     */
+    public void addAttributeMismatch(String key, String attribute, String shortName1, String value1, String shortName2, String value2) {
+        String message = "Mismatch in attribute '" + attribute + "' at " + key + ": " 
+                + shortName1 + "=[" + value1 + "] " 
+                + shortName2 + "=[" + value2 + "]";
+        mismatches.add(message);
+    }
+
+    /**
+     * Prints a summary of all mismatches, missing elements, and missing attributes.
+     * - Logs errors for each detected issue.
+     * - If no mismatches are found, logs a success message.
+     */
+    public void printSummary() {
+        // Log mismatches in element values
+        for (String mismatch : mismatches) {
+            logger.error(mismatch);
+        }
+
+        // Log missing elements
+        for (String missing : missingElements) {
+            logger.error(missing);
+        }
+
+        // Log missing attributes
+        for (String missingAttr : missingAttributes) {
+            logger.error(missingAttr);
+        }
+
+        // If no issues were found, log success
+        if (mismatches.isEmpty() && missingElements.isEmpty() && missingAttributes.isEmpty()) {
+            logger.info("XML comparison successful. No mismatches found.");
+        }
+    }
+
+    /**
+     * Checks if any mismatches, missing elements, or missing attributes exist.
+     *
+     * @return `true` if differences exist, `false` otherwise.
+     */
+    public boolean hasDifferences() {
+        return !mismatches.isEmpty() || !missingElements.isEmpty() || !missingAttributes.isEmpty();
+    }
+
+    /**
+     * Gets all recorded mismatches in element values.
+     *
+     * @return A list of element value mismatches.
+     */
+    public List<String> getMismatches() {
+        return new ArrayList<>(mismatches);
+    }
+
+    /**
+     * Gets all recorded missing elements.
+     *
+     * @return A list of missing elements.
+     */
+    public List<String> getMissingElements() {
+        return new ArrayList<>(missingElements);
+    }
+
+    /**
+     * Gets all recorded missing attributes.
+     *
+     * @return A list of missing attributes.
+     */
+    public List<String> getMissingAttributes() {
+        return new ArrayList<>(missingAttributes);
+    }
+}
