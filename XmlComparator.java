@@ -17,20 +17,19 @@ public class XMLComparator {
     private static final Logger logger = LogManager.getLogger(XMLComparator.class);
 
     /**
-     * Compares two XML files while ignoring specific tags.
+     * Compares two XML files while ignoring specific tags and treating structure as unordered.
      *
-     * @param shortName1  User-friendly name for first XML file (e.g., "Baseline").
+     * @param shortName1  User-friendly name for first XML file.
      * @param file1       Path to the first XML file.
-     * @param shortName2  User-friendly name for second XML file (e.g., "Modified").
+     * @param shortName2  User-friendly name for second XML file.
      * @param file2       Path to the second XML file.
-     * @param ignoredTags List of XML paths (e.g., "root/nested/tag") to be ignored during comparison.
+     * @param ignoredTags List of XML paths to be ignored during comparison.
      * @return List of discrepancies found between the two XMLs.
      */
     public static List<String> compareXMLFiles(String shortName1, Path file1, String shortName2, Path file2, List<String> ignoredTags) {
         List<String> failures = new ArrayList<>();
 
         try {
-            // Parse both XML files
             Document doc1 = parseXML(file1);
             Document doc2 = parseXML(file2);
 
@@ -40,9 +39,9 @@ public class XMLComparator {
                 return failures;
             }
 
-            // Convert XML Documents into a map representation
-            Map<String, String> xmlMap1 = new LinkedHashMap<>();
-            Map<String, String> xmlMap2 = new LinkedHashMap<>();
+            // Use TreeMap for order-independent comparison
+            Map<String, String> xmlMap1 = new TreeMap<>();
+            Map<String, String> xmlMap2 = new TreeMap<>();
 
             buildXMLMap(doc1.getDocumentElement(), "", xmlMap1, ignoredTags);
             buildXMLMap(doc2.getDocumentElement(), "", xmlMap2, ignoredTags);
@@ -63,12 +62,6 @@ public class XMLComparator {
         return failures;
     }
 
-    /**
-     * Parses an XML file into a Document object.
-     *
-     * @param filePath Path to the XML file.
-     * @return Parsed Document object or null in case of errors.
-     */
     private static Document parseXML(Path filePath) {
         try {
             if (!Files.exists(filePath)) {
@@ -107,7 +100,7 @@ public class XMLComparator {
     }
 
     /**
-     * Compares two XML maps and identifies discrepancies, using user-friendly names for each file.
+     * Compares two XML maps in an order-independent way.
      *
      * @param shortName1 User-friendly name of first XML file.
      * @param map1       XML map representation from file1.
@@ -118,8 +111,7 @@ public class XMLComparator {
     private static List<String> compareMaps(String shortName1, Map<String, String> map1, String shortName2, Map<String, String> map2) {
         List<String> failures = new ArrayList<>();
 
-        Set<String> allKeys = new HashSet<>();
-        allKeys.addAll(map1.keySet());
+        Set<String> allKeys = new HashSet<>(map1.keySet());
         allKeys.addAll(map2.keySet());
 
         for (String key : allKeys) {
