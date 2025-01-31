@@ -73,27 +73,36 @@ public class UniversalComparator {
     /**
      * Recursively builds a list-based map representation of XML elements.
      */
-    private static void buildXMLMap(Node node, String path, Map<String, List<Map<String, String>>> xmlListMap, List<String> ignoredTags) {
-        if (node.getNodeType() == Node.ELEMENT_NODE) {
-            String nodePath = path.isEmpty() ? node.getNodeName() : path + "/" + node.getNodeName();
+private static void buildXMLMap(Node node, String path, Map<String, List<Map<String, String>>> xmlListMap, List<String> ignoredTags) {
+    if (node.getNodeType() == Node.ELEMENT_NODE) {
+        String nodePath = path.isEmpty() ? node.getNodeName() : path + "/" + node.getNodeName();
 
-            if (!isIgnored(nodePath, ignoredTags)) {
-                Map<String, String> elementData = new HashMap<>();
-                NodeList children = node.getChildNodes();
+        // If any ancestor or the current node itself is ignored, do not process further
+        if (isIgnored(nodePath, ignoredTags)) {
+            return; // Skip this entire branch
+        }
 
-                for (int i = 0; i < children.getLength(); i++) {
-                    Node child = children.item(i);
-                    if (child.getNodeType() == Node.ELEMENT_NODE) {
-                        elementData.put(child.getNodeName(), child.getTextContent().trim());
-                    }
-                }
+        Map<String, String> elementData = new HashMap<>();
+        NodeList children = node.getChildNodes();
 
-                xmlListMap.putIfAbsent(nodePath, new ArrayList<>());
-                xmlListMap.get(nodePath).add(elementData);
+        // Process child elements
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child.getNodeType() == Node.ELEMENT_NODE) {
+                elementData.put(child.getNodeName(), child.getTextContent().trim());
             }
         }
-    }
 
+        // Store element list (to handle repeating elements)
+        xmlListMap.putIfAbsent(nodePath, new ArrayList<>());
+        xmlListMap.get(nodePath).add(elementData);
+
+        // Recursively process child elements (only if this node is NOT ignored)
+        for (int i = 0; i < children.getLength(); i++) {
+            buildXMLMap(children.item(i), nodePath, xmlListMap, ignoredTags);
+        }
+    }
+}
     /**
      * Checks if a nodePath should be ignored based on ignoredTags list.
      */
