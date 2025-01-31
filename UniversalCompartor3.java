@@ -12,9 +12,9 @@ import java.util.*;
 
 /**
  * UniversalComparator compares XML files while handling repeating elements.
- * - Compares XML elements & attributes.
+ * - Supports XML element & attribute comparison.
  * - Handles unordered structures by sorting elements before comparison.
- * - Focuses on leaf nodes instead of printing entire XML mismatches.
+ * - Supports optional secondary sorting field for more refined ordering.
  */
 public class UniversalComparator {
 
@@ -23,11 +23,10 @@ public class UniversalComparator {
     /**
      * Compares two XML files while handling multiple repeating elements.
      */
-    public static DiffResult compareXMLFiles(String shortName1, Path file1, String shortName2, Path file2, List<String> ignoredTags) throws Exception {
+    public static DiffResult compareXMLFiles(String shortName1, Path file1, String shortName2, Path file2, List<String> ignoredTags, String primarySortField, String secondarySortField) throws Exception {
         Document doc1 = parseXML(file1);
         Document doc2 = parseXML(file2);
 
-        // Ensure we start at the first child (ignoring root element itself)
         Element root1 = doc1.getDocumentElement();
         Element root2 = doc2.getDocumentElement();
 
@@ -35,11 +34,9 @@ public class UniversalComparator {
             throw new Exception("Root nodes do not match: " + root1.getNodeName() + " vs " + root2.getNodeName());
         }
 
-        // Use List<Map<String, String>> to handle repeating XML elements (like multiple <book> nodes)
         Map<String, List<Map<String, String>>> xmlListMap1 = new HashMap<>();
         Map<String, List<Map<String, String>>> xmlListMap2 = new HashMap<>();
 
-        // Process only child nodes of the root element (e.g., <book> elements in <catalog>)
         NodeList children1 = root1.getChildNodes();
         NodeList children2 = root2.getChildNodes();
 
@@ -50,7 +47,7 @@ public class UniversalComparator {
             buildXMLMap(children2.item(i), "", xmlListMap2, ignoredTags);
         }
 
-        return compareListMaps(shortName1, xmlListMap1, shortName2, xmlListMap2);
+        return compareListMaps(shortName1, xmlListMap1, shortName2, xmlListMap2, primarySortField, secondarySortField);
     }
 
     /**
@@ -80,12 +77,10 @@ public class UniversalComparator {
         if (node.getNodeType() == Node.ELEMENT_NODE) {
             String nodePath = path.isEmpty() ? node.getNodeName() : path + "/" + node.getNodeName();
 
-            // Skip nodes that contain any ignored tags
             if (!isIgnored(nodePath, ignoredTags)) {
                 Map<String, String> elementData = new HashMap<>();
                 NodeList children = node.getChildNodes();
 
-                // Process child elements
                 for (int i = 0; i < children.getLength(); i++) {
                     Node child = children.item(i);
                     if (child.getNodeType() == Node.ELEMENT_NODE) {
@@ -93,7 +88,6 @@ public class UniversalComparator {
                     }
                 }
 
-                // Store element list (to handle repeating elements)
                 xmlListMap.putIfAbsent(nodePath, new ArrayList<>());
                 xmlListMap.get(nodePath).add(elementData);
             }
@@ -115,7 +109,7 @@ public class UniversalComparator {
     /**
      * Compares two XML maps containing lists of repeating elements.
      */
-    private static DiffResult compareListMaps(String shortName1, Map<String, List<Map<String, String>>> map1, String shortName2, Map<String, List<Map<String, String>>> map2) {
+    private static DiffResult compareListMaps(String shortName1, Map<String, List<Map<String, String>>> map1, String shortName2, Map<String, List<Map<String, String>>> map2, String primarySortField, String secondarySortField) {
         DiffResult diffResult = new DiffResult();
 
         Set<String> allKeys = new HashSet<>(map1.keySet());
@@ -130,9 +124,12 @@ public class UniversalComparator {
             } else if (list2.isEmpty()) {
                 diffResult.addMissingElement(shortName2, key);
             } else {
-                // Sort lists for order-independent comparison
-                list1.sort(Comparator.comparing(map -> map.getOrDefault("title", "")));
-                list2.sort(Comparator.comparing(map -> map.getOrDefault("title", "")));
+                // Sort using primary and optional secondary field
+                list1.sort(Comparator.comparing((Map<String, String> map) -> map.getOrDefault(primarySortField, ""))
+                        .thenComparing(map -> map.getOrDefault(secondarySortField, "")));
+
+                list2.sort(Comparator.comparing((Map<String, String> map) -> map.getOrDefault(primarySortField, ""))
+                        .thenComparing(map -> map.getOrDefault(secondarySortField, "")));
 
                 for (int i = 0; i < Math.max(list1.size(), list2.size()); i++) {
                     Map<String, String> entry1 = i < list1.size() ? list1.get(i) : null;
@@ -168,7 +165,8 @@ public class UniversalComparator {
 
             List<String> ignoredTags = Arrays.asList("root/ignoreThis");
 
-            DiffResult xmlResult = compareXMLFiles("Baseline", xmlFile1, "Modified", xmlFile2, ignoredTags);
+            // Using primary sort as "title", and secondary sort as "publish_date"
+            DiffResult xmlResult = compareXMLFiles("Baseline", xmlFile1, "Modified", xmlFile2, ignoredTags, "title", "publish_date");
             xmlResult.printSummary();
 
         } catch (Exception e) {
