@@ -12,8 +12,9 @@ import java.util.*;
 
 /**
  * UniversalComparator compares XML files while handling repeating elements.
- * - Supports XML element & attribute comparison.
+ * - Compares XML elements & attributes.
  * - Handles unordered structures by sorting elements before comparison.
+ * - Focuses on leaf nodes instead of printing entire XML mismatches.
  */
 public class UniversalComparator {
 
@@ -21,25 +22,33 @@ public class UniversalComparator {
 
     /**
      * Compares two XML files while handling multiple repeating elements.
-     *
-     * @param shortName1  Friendly name for the first XML file.
-     * @param file1       Path to the first XML file.
-     * @param shortName2  Friendly name for the second XML file.
-     * @param file2       Path to the second XML file.
-     * @param ignoredTags List of XML element paths to ignore.
-     * @return DiffResult containing mismatches, missing elements, and attribute differences.
-     * @throws Exception If XML parsing fails.
      */
     public static DiffResult compareXMLFiles(String shortName1, Path file1, String shortName2, Path file2, List<String> ignoredTags) throws Exception {
         Document doc1 = parseXML(file1);
         Document doc2 = parseXML(file2);
 
+        // Ensure we start at the first child (ignoring root element itself)
+        Element root1 = doc1.getDocumentElement();
+        Element root2 = doc2.getDocumentElement();
+
+        if (!root1.getNodeName().equals(root2.getNodeName())) {
+            throw new Exception("Root nodes do not match: " + root1.getNodeName() + " vs " + root2.getNodeName());
+        }
+
         // Use List<Map<String, String>> to handle repeating XML elements (like multiple <book> nodes)
         Map<String, List<Map<String, String>>> xmlListMap1 = new HashMap<>();
         Map<String, List<Map<String, String>>> xmlListMap2 = new HashMap<>();
 
-        buildXMLMap(doc1.getDocumentElement(), "", xmlListMap1, ignoredTags);
-        buildXMLMap(doc2.getDocumentElement(), "", xmlListMap2, ignoredTags);
+        // Process only child nodes of the root element (e.g., <book> elements in <catalog>)
+        NodeList children1 = root1.getChildNodes();
+        NodeList children2 = root2.getChildNodes();
+
+        for (int i = 0; i < children1.getLength(); i++) {
+            buildXMLMap(children1.item(i), "", xmlListMap1, ignoredTags);
+        }
+        for (int i = 0; i < children2.getLength(); i++) {
+            buildXMLMap(children2.item(i), "", xmlListMap2, ignoredTags);
+        }
 
         return compareListMaps(shortName1, xmlListMap1, shortName2, xmlListMap2);
     }
@@ -87,12 +96,6 @@ public class UniversalComparator {
                 // Store element list (to handle repeating elements)
                 xmlListMap.putIfAbsent(nodePath, new ArrayList<>());
                 xmlListMap.get(nodePath).add(elementData);
-            }
-
-            // Recursively process child elements
-            NodeList children = node.getChildNodes();
-            for (int i = 0; i < children.getLength(); i++) {
-                buildXMLMap(children.item(i), nodePath, xmlListMap, ignoredTags);
             }
         }
     }
