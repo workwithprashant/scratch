@@ -3,18 +3,18 @@ package utils;
 
 import com.google.common.io.Files;
 import org.openqa.selenium.devtools.DevTools;
-import org.openqa.selenium.devtools.v119.network.Network; // Temporary fallback version
+import org.openqa.selenium.devtools.HasDevTools;
+import org.openqa.selenium.devtools.model.DevToolsDomain;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
- * Utility class to capture HAR file dynamically without a hardcoded CDP version.
+ * HAR Capture Utility with Future-Proof Dynamic CDP Version Selection.
  */
 public class HARCaptureUtil {
     private final DevTools devTools;
@@ -23,23 +23,22 @@ public class HARCaptureUtil {
 
     public HARCaptureUtil(RemoteWebDriver driver) {
         this.driver = driver;
-        this.devTools = ((ChromeDriver) driver).getDevTools();
-        this.devTools.createSession();
+        if (driver instanceof HasDevTools) {
+            this.devTools = ((HasDevTools) driver).getDevTools();
+            this.devTools.createSession();
+        } else {
+            throw new IllegalStateException("This WebDriver instance does not support DevTools.");
+        }
     }
 
     /**
-     * Dynamically starts HAR capture using the latest available CDP version.
+     * Dynamically starts HAR capture using the correct CDP version for the running browser.
      */
     public void startHARCapture() {
         try {
-            Object network = getNetworkInstance();
-            if (network != null) {
-                Method enableMethod = network.getClass().getMethod("enable", Optional.class, Optional.class, Optional.class);
-                enableMethod.invoke(network, Optional.empty(), Optional.empty(), Optional.empty());
-                System.out.println("HAR capture started with dynamic CDP version...");
-            } else {
-                System.err.println("Could not start HAR capture: Network module not found.");
-            }
+            DevToolsDomain networkDomain = devTools.getDomains().getNetwork();
+            networkDomain.enable(Optional.empty(), Optional.empty(), Optional.empty());
+            System.out.println("HAR capture started dynamically using correct CDP version...");
         } catch (Exception e) {
             System.err.println("Error starting HAR capture: " + e.getMessage());
         }
@@ -52,8 +51,8 @@ public class HARCaptureUtil {
      */
     public void stopAndSaveHAR(String testName) {
         try {
-            // Fetch response data dynamically (adapt as needed)
-            String harContent = "{ \"log\": \"Sample HAR data\" }"; // Mocked response
+            // Simulated HAR content (Replace with actual network logs if needed)
+            String harContent = "{ \"log\": \"Sample HAR data\" }";
 
             saveHARToFile(harContent, testName);
             System.out.println("HAR file saved for test: " + testName);
@@ -80,29 +79,6 @@ public class HARCaptureUtil {
         } catch (IOException e) {
             System.err.println("Error writing HAR file: " + e.getMessage());
         }
-    }
-
-    /**
-     * Uses Reflection to dynamically fetch the latest Network CDP version.
-     *
-     * @return The Network instance or null if not found.
-     */
-    private Object getNetworkInstance() {
-        try {
-            String basePackage = "org.openqa.selenium.devtools";
-            for (int version = 120; version >= 110; version--) { // Check versions dynamically
-                String className = basePackage + ".v" + version + ".network.Network";
-                try {
-                    Class<?> networkClass = Class.forName(className);
-                    return networkClass.getDeclaredConstructor().newInstance();
-                } catch (ClassNotFoundException ignored) {
-                    // If version does not exist, continue checking previous versions
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Error finding appropriate Network class: " + e.getMessage());
-        }
-        return null;
     }
 }
 
