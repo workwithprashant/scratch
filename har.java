@@ -262,3 +262,177 @@ public class TestListener implements ITestListener {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+package utils;
+
+import com.google.common.io.Files;
+import org.openqa.selenium.devtools.DevTools;
+import org.openqa.selenium.devtools.v119.network.Network;
+import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedList;
+import java.util.Optional;
+
+/**
+ * Utility class to capture HAR files in small chunks, splitting based on size, and retaining only (N-1) latest files.
+ */
+public class HARCaptureUtil {
+    private final DevTools devTools;
+    private final RemoteWebDriver driver;
+    private final String harDirectory = "target/har-logs/";
+    private final LinkedList<String> harFileNames = new LinkedList<>();
+    private final int maxHarFiles = 5;  // Keep only last 4 HAR files
+    private final long maxHarSizeBytes = 2 * 1024 * 1024; // 2MB per file
+
+    private String currentHarFile;
+    private StringBuilder harBuffer = new StringBuilder();
+
+    public HARCaptureUtil(RemoteWebDriver driver) {
+        this.driver = driver;
+        this.devTools = ((ChromeDriver) driver).getDevTools();
+        this.devTools.createSession();
+        this.currentHarFile = generateHarFileName();
+    }
+
+    /**
+     * Starts HAR capture using Chrome DevTools Protocol.
+     */
+    public void startHARCapture() {
+        try {
+            devTools.send(Network.enable(Optional.empty(), Optional.empty(), Optional.empty()));
+            System.out.println("HAR capture started...");
+        } catch (Exception e) {
+            System.err.println("Error starting HAR capture: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Captures HAR data incrementally and splits files based on size.
+     */
+    public void saveRollingHAR(String testName, String harChunk) {
+        try {
+            // Append new HAR data
+            harBuffer.append(harChunk).append("\n");
+
+            // Check HAR size
+            if (harBuffer.length() >= maxHarSizeBytes) {
+                flushHARFile();
+            }
+        } catch (Exception e) {
+            System.err.println("Error saving rolling HAR: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Stops HAR capture and flushes the final HAR file.
+     */
+    public void stopHARCapture() {
+        flushHARFile();
+        System.out.println("Finalizing HAR capture...");
+    }
+
+    /**
+     * Writes the buffered HAR data to a file and starts a new one.
+     */
+    private void flushHARFile() {
+        if (harBuffer.length() == 0) return;
+
+        try {
+            saveHARToFile(harBuffer.toString(), currentHarFile);
+            harFileNames.add(currentHarFile);
+            if (harFileNames.size() > maxHarFiles) {
+                deleteFile(harFileNames.poll());
+            }
+        } catch (IOException e) {
+            System.err.println("Error writing HAR file: " + e.getMessage());
+        }
+
+        // Reset buffer and generate a new HAR file
+        harBuffer = new StringBuilder();
+        currentHarFile = generateHarFileName();
+    }
+
+    /**
+     * Generates a new HAR file name.
+     */
+    private String generateHarFileName() {
+        return harDirectory + "HAR_" + System.currentTimeMillis() + ".har";
+    }
+
+    /**
+     * Saves HAR data to a file.
+     */
+    private void saveHARToFile(String harContent, String filePath) throws IOException {
+        File directory = new File(harDirectory);
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+        File harFile = new File(filePath);
+        Files.write(harContent.getBytes(StandardCharsets.UTF_8), harFile);
+        System.out.println("HAR file saved: " + harFile.getAbsolutePath());
+    }
+
+    /**
+     * Deletes an older HAR file.
+     */
+    private void deleteFile(String filePath) {
+        File file = new File(filePath);
+        if (file.exists() && file.delete()) {
+            System.out.println("Deleted old HAR file: " + filePath);
+        }
+    }
+}
+
+
+########
+
+package tests;
+
+import base.BaseTest;
+import org.junit.Test;
+import java.util.concurrent.TimeUnit;
+
+public class SampleTest extends BaseTest {
+
+    @Test
+    public void testExample() throws InterruptedException {
+        driver.get("https://example.com");
+
+        // Simulate test execution with periodic HAR capture
+        for (int i = 0; i < 10; i++) {
+            harCaptureUtil.saveRollingHAR("TestExample", "{ \"log\": \"Sample HAR chunk " + i + "\" }");
+            TimeUnit.SECONDS.sleep(2); // Simulate delay
+        }
+
+        // Simulate test failure
+        assert driver.getTitle().contains("Not Found");
+    }
+}
+
+
+
+
+
+
+
+
