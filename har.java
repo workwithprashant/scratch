@@ -191,16 +191,42 @@ public class HARCaptureUtil {
         }
     }
 
-    /**
-     * Initializes a new HAR file for writing.
-     */
-    private void initializeHarFile() {
-        try {
-            currentHarFile = "target/har-logs/HAR_" + System.currentTimeMillis() + ".har";
-            fileWriter = new FileWriter(currentHarFile, true);
-            currentFileSize = new File(currentHarFile).length();
-        } catch (IOException e) {
-            System.err.println("Error initializing HAR file: " + e.getMessage());
+/**
+ * Initializes a new HAR file for writing.
+ */
+private void initializeHarFile() {
+    try {
+        // Ensure the target directory exists
+        File directory = new File(harDirectory);
+        if (!directory.exists()) {
+            boolean dirCreated = directory.mkdirs();
+            if (dirCreated) {
+                System.out.println("Created directory: " + harDirectory);
+            } else {
+                System.err.println("Failed to create directory: " + harDirectory);
+            }
         }
+
+        // Generate the HAR file name
+        currentHarFile = harDirectory + File.separator + "HAR_" + System.currentTimeMillis() + ".har";
+        
+        // Create a new file if it doesn't exist
+        File harFile = new File(currentHarFile);
+        if (!harFile.exists()) {
+            boolean fileCreated = harFile.createNewFile();
+            if (fileCreated) {
+                System.out.println("Created HAR file: " + currentHarFile);
+            } else {
+                System.err.println("Failed to create HAR file: " + currentHarFile);
+            }
+        }
+
+        // Open file writer in append mode
+        fileWriter = new FileWriter(harFile, true);
+        currentFileSize = harFile.length();
+
+    } catch (IOException e) {
+        System.err.println("Error initializing HAR file: " + e.getMessage());
     }
+}
 }
