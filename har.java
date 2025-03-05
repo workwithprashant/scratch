@@ -52,18 +52,25 @@ private void initializeDevTools() {
         } else if (driver instanceof RemoteWebDriver) {
             RemoteWebDriver remoteDriver = (RemoteWebDriver) driver;
 
-            // Attempt to get "se:cdp" capability (Selenium 4+)
-            Object cdpEndpoint = remoteDriver.getCapabilities().getCapability("se:cdp");
-            if (cdpEndpoint != null) {
-                String webSocketDebuggerUrl = cdpEndpoint.toString();
-                System.out.println("Using CDP WebSocket Debugger URL: " + webSocketDebuggerUrl);
+            // Attempt to get WebSocket Debugger URL from ChromeOptions
+            Object cdpCapability = remoteDriver.getCapabilities().getCapability("goog:chromeOptions");
+            if (cdpCapability instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> chromeOptions = (Map<String, Object>) cdpCapability;
 
-                // Manually attach DevTools via WebSocket URL
-                this.devTools = DevTools.createSession(webSocketDebuggerUrl);
-                this.devTools.createSession();
-                System.out.println("Successfully attached DevTools for RemoteWebDriver.");
+                if (chromeOptions.containsKey("debuggerAddress")) {
+                    String debuggerAddress = chromeOptions.get("debuggerAddress").toString();
+                    System.out.println("Using WebSocket Debugger URL: " + debuggerAddress);
+
+                    // Use WebSocket URL to attach DevTools manually
+                    this.devTools = remoteDriver.getDevTools();
+                    this.devTools.createSession();
+                    System.out.println("Successfully attached DevTools for RemoteWebDriver.");
+                } else {
+                    System.err.println("No debugger address found in ChromeOptions.");
+                }
             } else {
-                System.err.println("DevTools is not available for RemoteWebDriver (no 'se:cdp' capability).");
+                System.err.println("DevTools is not available for RemoteWebDriver (no 'goog:chromeOptions' capability).");
             }
         }
     } catch (Exception e) {
