@@ -1020,5 +1020,82 @@ public class HARCaptureUtil {
 
 
 
+###########
 
+import org.openqa.selenium.*;
+import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.remote.SessionId;
+import org.openqa.selenium.OutputType;
+
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+public class FullPageScreenshotUtil {
+    private static final Logger LOGGER = Logger.getLogger(FullPageScreenshotUtil.class.getName());
+
+    /**
+     * Captures a full-page screenshot as a Base64 string on a remote Selenium Grid.
+     * This method scrolls through the page in segments, takes multiple screenshots, and stitches them.
+     *
+     * @param driver The WebDriver instance (RemoteWebDriver recommended)
+     * @return Base64 string of the full-page screenshot or empty string on failure.
+     */
+    public static String captureFullPageScreenshotBase64(WebDriver driver) {
+        if (!(driver instanceof RemoteWebDriver)) {
+            LOGGER.warning("This method is designed for RemoteWebDriver instances.");
+            return "";
+        }
+
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // Get page dimensions
+            int totalHeight = ((Long) js.executeScript("return document.body.scrollHeight")).intValue();
+            int viewportHeight = ((Long) js.executeScript("return window.innerHeight")).intValue();
+            int totalWidth = ((Long) js.executeScript("return document.body.scrollWidth")).intValue();
+
+            List<BufferedImage> images = new ArrayList<>();
+            int currentScroll = 0;
+
+            while (currentScroll < totalHeight) {
+                js.executeScript("window.scrollTo(0, arguments[0]);", currentScroll);
+                Thread.sleep(500); // Allow some time for rendering
+                
+                // Capture the current viewport screenshot
+                byte[] screenshotBytes = ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES);
+                BufferedImage screenshot = ImageIO.read(new java.io.ByteArrayInputStream(screenshotBytes));
+                images.add(screenshot);
+
+                currentScroll += viewportHeight;
+            }
+
+            // Create final stitched image
+            BufferedImage finalImage = new BufferedImage(totalWidth, totalHeight, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = finalImage.createGraphics();
+
+            int yOffset = 0;
+            for (BufferedImage img : images) {
+                g2d.drawImage(img, 0, yOffset, null);
+                yOffset += img.getHeight();
+            }
+            g2d.dispose();
+
+            // Convert stitched image to Base64
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(finalImage, "png", baos);
+            return Base64.getEncoder().encodeToString(baos.toByteArray());
+
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error capturing full-page screenshot.", e);
+            return ""; // Return empty string to prevent test failure
+        }
+    }
+}
 
