@@ -1099,3 +1099,228 @@ public class FullPageScreenshotUtil {
     }
 }
 
+
+
+
+
+
+
+#########################
+
+
+package utils;
+
+import com.google.common.io.Files;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.devtools.DevTools;
+import org.openqa.selenium.remote.RemoteWebDriver;
+
+import java.io.*;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedList;
+import java.util.Optional;
+import java.util.zip.GZIPOutputStream;
+
+/**
+ * HAR Capture Utility that dynamically detects the highest available CDP version
+ * and supports both local ChromeDriver and RemoteWebDriver (Selenium Grid).
+ */
+public class HARCaptureUtil {
+    private DevTools devTools;
+    private final WebDriver driver;
+    private final String harDirectory = "target/har-logs/";
+    private final LinkedList<String> harFileNames = new LinkedList<>();
+    private final int maxHarFiles = 5;  // Keep last 4 uncompressed HAR files
+    private final long maxHarSizeBytes = 2 * 1024 * 1024; // 2MB per file
+    private Object networkInstance; // Holds the dynamically loaded Network class instance
+
+    private String currentHarFile;
+    private StringBuilder harBuffer = new StringBuilder();
+
+    public HARCaptureUtil(WebDriver driver) {
+        this.driver = driver;
+        initializeDevTools();
+        this.currentHarFile = generateHarFileName();
+    }
+
+    /**
+     * Initializes DevTools session for Chrome.
+     * Supports both local ChromeDriver and RemoteWebDriver.
+     */
+    private void initializeDevTools() {
+        try {
+            if (driver instanceof ChromeDriver) {
+                // Local ChromeDriver: Directly get DevTools
+                this.devTools = ((ChromeDriver) driver).getDevTools();
+                this.devTools.createSession();
+                System.out.println("Successfully initialized DevTools for Local ChromeDriver.");
+            } else if (driver instanceof RemoteWebDriver) {
+                // Remote WebDriver (Selenium Grid / Selenium Box)
+                Object bridge = ((RemoteWebDriver) driver).getCapabilities().getCapability("se:cdp");
+                if (bridge != null) {
+                    devTools = (DevTools) bridge;
+                    devTools.createSession();
+                    System.out.println("Successfully initialized DevTools for RemoteWebDriver.");
+                } else {
+                    System.err.println("DevTools is not available for RemoteWebDriver.");
+                }
+            }
+
+            // Dynamically load the highest available Network module
+            networkInstance = getHighestNetworkInstance();
+        } catch (Exception e) {
+            System.err.println("Error initializing DevTools: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Dynamically finds and loads the highest available Network module using reflection.
+     */
+    private Object getHighestNetworkInstance() {
+        String basePackage = "org.openqa.selenium.devtools";
+
+        // Start from v199 and go down to v110, stopping at the first available version
+        for (int version = 199; version >= 110; version--) {
+            String className = basePackage + ".v" + version + ".network.Network";
+            try {
+                Class<?> networkClass = Class.forName(className);
+                System.out.println("Using Chrome DevTools Protocol version: " + version);
+                return networkClass.getDeclaredConstructor().newInstance();
+            } catch (ClassNotFoundException ignored) {
+                // Continue checking lower versions until we find the latest available
+            }
+        }
+        System.err.println("No valid Chrome DevTools Network version found.");
+        return null;
+    }
+
+    /**
+     * Starts HAR capture using the dynamically loaded CDP Network module.
+     */
+    public void startHARCapture() {
+        try {
+            if (devTools == null || networkInstance == null) {
+                System.err.println("DevTools is not initialized, HAR capture cannot start.");
+                return;
+            }
+
+            // Enable Network Monitoring using reflection
+            Method enableMethod = networkInstance.getClass().getMethod("enable", Optional.class, Optional.class, Optional.class);
+            enableMethod.invoke(networkInstance, Optional.empty(), Optional.empty(), Optional.empty());
+
+            System.out.println("HAR capture started with dynamic CDP version...");
+        } catch (Exception e) {
+            System.err.println("Error starting HAR capture: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Saves HAR data in rolling files.
+     */
+    public void saveRollingHAR(String harChunk) {
+        try {
+            harBuffer.append(harChunk).append("\n");
+
+            if (harBuffer.length() >= maxHarSizeBytes) {
+                flushHARFile();
+            }
+        } catch (Exception e) {
+            System.err.println("Error saving rolling HAR: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Stops HAR capture and saves remaining data.
+     */
+    public void stopHARCapture() {
+        flushHARFile();
+        System.out.println("Finalizing HAR capture...");
+        compressOlderHARFiles();
+    }
+
+    /**
+     * Writes the buffered HAR data to a file and starts a new one.
+     */
+    private void flushHARFile() {
+        if (harBuffer.length() == 0) return;
+
+        try {
+            saveHARToFile(harBuffer.toString(), currentHarFile);
+            harFileNames.add(currentHarFile);
+            if (harFileNames.size() > maxHarFiles) {
+                String oldHarFile = harFileNames.poll();
+                if (oldHarFile != null) {
+                    compressAndDeleteHar(oldHarFile);
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Error writing HAR file: " + e.getMessage());
+        }
+
+        harBuffer = new StringBuilder();
+        currentHarFile = generateHarFileName();
+    }
+
+    /**
+     * Generates a new HAR file name.
+     */
+    private String generateHarFileName() {
+        return harDirectory + "HAR_" + System.currentTimeMillis() + ".har";
+    }
+
+    /**
+     * Saves HAR data to a file.
+     */
+    private void saveHARToFile(String harContent, String filePath) throws IOException {
+        File directory = new File(harDirectory);
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+        File harFile = new File(filePath);
+        Files.write(harContent.getBytes(StandardCharsets.UTF_8), harFile);
+        System.out.println("HAR file saved: " + harFile.getAbsolutePath());
+    }
+
+    /**
+     * Compresses old HAR files and deletes the original.
+     */
+    private void compressAndDeleteHar(String filePath) {
+        String compressedFilePath = filePath + ".gz";
+
+        try (FileInputStream fis = new FileInputStream(filePath);
+             FileOutputStream fos = new FileOutputStream(compressedFilePath);
+             GZIPOutputStream gzipOS = new GZIPOutputStream(fos)) {
+
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = fis.read(buffer)) > 0) {
+                gzipOS.write(buffer, 0, len);
+            }
+
+            System.out.println("Compressed HAR file: " + compressedFilePath);
+
+            // Delete original HAR file after compression
+            File harFile = new File(filePath);
+            if (harFile.exists() && harFile.delete()) {
+                System.out.println("Deleted original HAR file: " + filePath);
+            }
+
+        } catch (IOException e) {
+            System.err.println("Error compressing HAR file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Compresses all older HAR files except the latest (N-1).
+     */
+    private void compressOlderHARFiles() {
+        while (harFileNames.size() > maxHarFiles) {
+            String oldHarFile = harFileNames.poll();
+            if (oldHarFile != null) {
+                compressAndDeleteHar(oldHarFile);
+            }
+        }
+    }
+}
