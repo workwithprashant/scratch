@@ -235,3 +235,50 @@ private void initializeHarFile() {
     }
 }
 }
+
+
+
+
+###################################################################
+
+
+/**
+ * Initializes DevTools session for Chrome.
+ * Supports both local ChromeDriver and RemoteWebDriver.
+ */
+private void initializeDevTools() {
+    try {
+        if (driver instanceof ChromeDriver) {
+            // Local ChromeDriver: Directly get DevTools
+            this.devTools = ((ChromeDriver) driver).getDevTools();
+            this.devTools.createSession();
+            System.out.println("Initialized DevTools for Local ChromeDriver.");
+        } else if (driver instanceof RemoteWebDriver) {
+            RemoteWebDriver remoteDriver = (RemoteWebDriver) driver;
+
+            // Attempt to get WebSocket Debugger URL from ChromeOptions
+            Object cdpEndpoint = remoteDriver.getCapabilities().getCapability("goog:chromeOptions");
+            if (cdpEndpoint != null && cdpEndpoint instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> chromeOptions = (Map<String, Object>) cdpEndpoint;
+
+                if (chromeOptions.containsKey("debuggerAddress")) {
+                    String debuggerAddress = chromeOptions.get("debuggerAddress").toString();
+                    System.out.println("Using WebSocket Debugger URL: " + debuggerAddress);
+
+                    // Attach DevTools manually via WebSocket URL
+                    this.devTools = DevTools.createSession(debuggerAddress);
+                    this.devTools.createSession();
+                    System.out.println("Successfully attached DevTools for RemoteWebDriver.");
+                } else {
+                    System.err.println("No debugger address found in ChromeOptions.");
+                }
+            } else {
+                System.err.println("DevTools is not available for RemoteWebDriver (no 'goog:chromeOptions' capability).");
+            }
+        }
+    } catch (Exception e) {
+        System.err.println("Error initializing DevTools: " + e.getMessage());
+    }
+}
+
