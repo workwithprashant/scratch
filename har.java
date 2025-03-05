@@ -1324,3 +1324,216 @@ public class HARCaptureUtil {
         }
     }
 }
+
+########################
+
+package utils;
+
+import com.google.common.io.Files;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.devtools.DevTools;
+import org.openqa.selenium.devtools.v119.network.Network;
+import org.openqa.selenium.devtools.v119.network.model.ResponseReceived;
+import org.openqa.selenium.remote.RemoteWebDriver;
+
+import java.io.*;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedList;
+import java.util.Optional;
+import java.util.zip.GZIPOutputStream;
+
+/**
+ * HAR Capture Utility that dynamically detects the highest available CDP version,
+ * captures real network data, and manages file size by splitting large HAR files.
+ */
+public class HARCaptureUtil {
+    private DevTools devTools;
+    private final WebDriver driver;
+    private final String harDirectory = "target/har-logs/";
+    private final LinkedList<String> harFileNames = new LinkedList<>();
+    private final int maxHarFiles = 5;  // Keep last 4 uncompressed HAR files
+    private final long maxHarSizeBytes = 2 * 1024 * 1024; // 2MB per file
+
+    private String currentHarFile;
+    private FileWriter fileWriter;
+    private long currentFileSize = 0; // Track actual file size
+
+    public HARCaptureUtil(WebDriver driver) {
+        this.driver = driver;
+        initializeDevTools();
+        initializeHarFile();
+    }
+
+    /**
+     * Initializes DevTools session for Chrome.
+     * Supports both local ChromeDriver and RemoteWebDriver.
+     */
+    private void initializeDevTools() {
+        try {
+            if (driver instanceof ChromeDriver) {
+                this.devTools = ((ChromeDriver) driver).getDevTools();
+                this.devTools.createSession();
+                System.out.println("Initialized DevTools for Local ChromeDriver.");
+            } else if (driver instanceof RemoteWebDriver) {
+                Object bridge = ((RemoteWebDriver) driver).getCapabilities().getCapability("se:cdp");
+                if (bridge != null) {
+                    devTools = (DevTools) bridge;
+                    devTools.createSession();
+                    System.out.println("Initialized DevTools for RemoteWebDriver.");
+                } else {
+                    System.err.println("DevTools is not available for RemoteWebDriver.");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error initializing DevTools: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Initializes the HAR file for writing.
+     */
+    private void initializeHarFile() {
+        try {
+            currentHarFile = generateHarFileName();
+            fileWriter = new FileWriter(currentHarFile, true); // Append mode
+            currentFileSize = new File(currentHarFile).length();
+        } catch (IOException e) {
+            System.err.println("Error initializing HAR file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Starts HAR capture using Chrome DevTools Protocol.
+     */
+    public void startHARCapture() {
+        try {
+            if (devTools == null) {
+                System.err.println("DevTools not initialized, cannot start HAR capture.");
+                return;
+            }
+            devTools.send(Network.enable(Optional.empty(), Optional.empty(), Optional.empty()));
+
+            // Capture Network Responses
+            devTools.addListener(Network.responseReceived(), this::captureHARChunk);
+
+            System.out.println("HAR capture started...");
+        } catch (Exception e) {
+            System.err.println("Error starting HAR capture: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Captures HAR data in small chunks.
+     */
+    private void captureHARChunk(ResponseReceived response) {
+        try {
+            String requestUrl = response.getResponse().getUrl();
+            int status = response.getResponse().getStatus();
+            String harEntry = "{ \"url\": \"" + requestUrl + "\", \"status\": " + status + " },\n";
+
+            saveRollingHAR(harEntry);
+        } catch (Exception e) {
+            System.err.println("Error capturing HAR chunk: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Saves HAR data in rolling files, managing size limits.
+     */
+    public void saveRollingHAR(String harChunk) {
+        try {
+            byte[] harBytes = harChunk.getBytes(StandardCharsets.UTF_8);
+            long chunkSize = harBytes.length;
+
+            // If adding this chunk exceeds the max file size, flush to a new HAR file
+            if ((currentFileSize + chunkSize) >= maxHarSizeBytes) {
+                flushHARFile();
+            }
+
+            // Write the chunk to the current HAR file
+            fileWriter.write(harChunk);
+            fileWriter.flush();
+            currentFileSize += chunkSize;
+
+        } catch (IOException e) {
+            System.err.println("Error saving rolling HAR: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Stops HAR capture and saves remaining data.
+     */
+    public void stopHARCapture() {
+        flushHARFile();
+        System.out.println("Finalizing HAR capture...");
+        compressOlderHARFiles();
+    }
+
+    /**
+     * Finalizes the current HAR file and prepares a new one.
+     */
+    private void flushHARFile() {
+        try {
+            if (fileWriter != null) {
+                fileWriter.close();
+            }
+            harFileNames.add(currentHarFile);
+            if (harFileNames.size() > maxHarFiles) {
+                compressAndDeleteHar(harFileNames.poll());
+            }
+
+            // Initialize a new HAR file
+            initializeHarFile();
+
+        } catch (IOException e) {
+            System.err.println("Error finalizing HAR file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Generates a new HAR file name.
+     */
+    private String generateHarFileName() {
+        return harDirectory + "HAR_" + System.currentTimeMillis() + ".har";
+    }
+
+    /**
+     * Compresses old HAR files and deletes the original.
+     */
+    private void compressAndDeleteHar(String filePath) {
+        String compressedFilePath = filePath + ".gz";
+
+        try (FileInputStream fis = new FileInputStream(filePath);
+             FileOutputStream fos = new FileOutputStream(compressedFilePath);
+             GZIPOutputStream gzipOS = new GZIPOutputStream(fos)) {
+
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = fis.read(buffer)) > 0) {
+                gzipOS.write(buffer, 0, len);
+            }
+
+            System.out.println("Compressed HAR file: " + compressedFilePath);
+
+            // Delete original HAR file after compression
+            File harFile = new File(filePath);
+            if (harFile.exists() && harFile.delete()) {
+                System.out.println("Deleted original HAR file: " + filePath);
+            }
+
+        } catch (IOException e) {
+            System.err.println("Error compressing HAR file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Compresses all older HAR files except the latest (N-1).
+     */
+    private void compressOlderHARFiles() {
+        while (harFileNames.size() > maxHarFiles) {
+            compressAndDeleteHar(harFileNames.poll());
+        }
+    }
+}
