@@ -38,33 +38,42 @@ public class HARCaptureUtil {
         initializeHarFile();
     }
 
-    /**
-     * Initializes DevTools session for Chrome.
-     * Supports both local ChromeDriver and RemoteWebDriver.
-     */
-    private void initializeDevTools() {
-        try {
-            if (driver instanceof ChromeDriver) {
-                this.devTools = ((ChromeDriver) driver).getDevTools();
-                this.devTools.createSession();
-                System.out.println("Initialized DevTools for Local ChromeDriver.");
-            } else if (driver instanceof RemoteWebDriver) {
-                Object bridge = ((RemoteWebDriver) driver).getCapabilities().getCapability("se:cdp");
-                if (bridge != null) {
-                    devTools = (DevTools) bridge;
-                    devTools.createSession();
-                    System.out.println("Initialized DevTools for RemoteWebDriver.");
-                } else {
-                    System.err.println("DevTools is not available for RemoteWebDriver.");
-                }
-            }
+/**
+ * Initializes DevTools session for Chrome.
+ * Supports both local ChromeDriver and RemoteWebDriver.
+ */
+private void initializeDevTools() {
+    try {
+        if (driver instanceof ChromeDriver) {
+            // Local ChromeDriver: Directly get DevTools
+            this.devTools = ((ChromeDriver) driver).getDevTools();
+            this.devTools.createSession();
+            System.out.println("Initialized DevTools for Local ChromeDriver.");
+        } else if (driver instanceof RemoteWebDriver) {
+            RemoteWebDriver remoteDriver = (RemoteWebDriver) driver;
 
-            // Dynamically load the highest available Network module
-            networkInstance = getHighestNetworkInstance();
-        } catch (Exception e) {
-            System.err.println("Error initializing DevTools: " + e.getMessage());
+            // Attempt to get "se:cdp" capability
+            Object bridge = remoteDriver.getCapabilities().getCapability("se:cdp");
+            if (bridge != null) {
+                devTools = (DevTools) bridge;
+                devTools.createSession();
+                System.out.println("Initialized DevTools for RemoteWebDriver via 'se:cdp'.");
+            } else {
+                // If "se:cdp" is not available, manually get the session ID
+                String sessionId = remoteDriver.getSessionId().toString();
+                String cdpUrl = "http://" + remoteDriver.getCapabilities().getCapability("goog:chromeOptions");
+                
+                System.out.println("Trying to attach DevTools manually: " + cdpUrl);
+
+                // Manually attach to Chrome DevTools via Remote Debugging URL
+                devTools = DevTools.createSession(remoteDriver, sessionId);
+                System.out.println("Successfully attached DevTools for RemoteWebDriver.");
+            }
         }
+    } catch (Exception e) {
+        System.err.println("Error initializing DevTools: " + e.getMessage());
     }
+}
 
     /**
      * Dynamically finds and loads the highest available Network module using reflection.
