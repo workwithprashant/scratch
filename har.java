@@ -247,8 +247,6 @@ private void initializeHarFile() {
 
 
 ###################################################################
-
-
 /**
  * Initializes DevTools session for Chrome.
  * Supports both local ChromeDriver and RemoteWebDriver.
@@ -264,18 +262,17 @@ private void initializeDevTools() {
             RemoteWebDriver remoteDriver = (RemoteWebDriver) driver;
 
             // Attempt to get WebSocket Debugger URL from ChromeOptions
-            Object cdpEndpoint = remoteDriver.getCapabilities().getCapability("goog:chromeOptions");
-            if (cdpEndpoint != null && cdpEndpoint instanceof Map) {
+            Object cdpCapability = remoteDriver.getCapabilities().getCapability("goog:chromeOptions");
+            if (cdpCapability instanceof Map) {
                 @SuppressWarnings("unchecked")
-                Map<String, Object> chromeOptions = (Map<String, Object>) cdpEndpoint;
+                Map<String, Object> chromeOptions = (Map<String, Object>) cdpCapability;
 
                 if (chromeOptions.containsKey("debuggerAddress")) {
                     String debuggerAddress = chromeOptions.get("debuggerAddress").toString();
                     System.out.println("Using WebSocket Debugger URL: " + debuggerAddress);
 
-                    // Attach DevTools manually via WebSocket URL
-                    this.devTools = DevTools.createSession(debuggerAddress);
-                    this.devTools.createSession();
+                    // Manually connect DevTools via WebSocket
+                    connectToDevTools(debuggerAddress);
                     System.out.println("Successfully attached DevTools for RemoteWebDriver.");
                 } else {
                     System.err.println("No debugger address found in ChromeOptions.");
@@ -289,3 +286,20 @@ private void initializeDevTools() {
     }
 }
 
+
+/**
+ * Manually connects to Chrome DevTools Protocol using WebSocket Debugger URL.
+ */
+private void connectToDevTools(String debuggerAddress) {
+    try {
+        URI devToolsUri = new URI("ws://" + debuggerAddress + "/devtools/browser");
+
+        // Use WebSocket to connect to DevTools
+        WebSocketClient client = new WebSocketClient(devToolsUri);
+        client.connect();
+
+        System.out.println("Connected to Chrome DevTools via WebSocket: " + devToolsUri);
+    } catch (Exception e) {
+        System.err.println("Error connecting to DevTools WebSocket: " + e.getMessage());
+    }
+}
